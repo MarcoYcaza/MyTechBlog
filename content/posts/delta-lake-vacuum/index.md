@@ -1,34 +1,69 @@
 ---
-title: "Understanding Delta Lake VACUUM (Sample)"
-date: 2026-10-20
-description: "Understand how VACUUM removes obsolete files and why retention matters."
+title: "Vaccum functionality and deletion vectors"
+date: 2026-10-28
+description: "We'll see briefly how the certain writting operations have an unexpected impact on the vaccum operation"
 tags: [Databricks, Delta Lake, VACUUM]
 categories: [Data Engineering]
-draft: false
+draft: true
 ---
 
-> Sample article: replace or remove this post when you publish your own work.
+>This was the instruction: Let's enforce a  7 day retetion policy on our tables. For GDPR purposes no file containing any rows can persist in our storage.  
 
-Delta Lake uses a transaction log to describe which data files belong to a table. Updates and deletes can leave older files behind; `VACUUM` removes files that are no longer needed and are older than the retention threshold.
 
-![Diagram showing current and obsolete files in a Delta table](vacuum.svg)
+First things first was to check the state of the tables , with a describe command it was evident that some tables had different window retention. The fix was simple , to set the deleteFileRetentionDuration to 7 days.  
 
-## Before you clean up
+This means when a table experiments an modification for example a deletion , its parquet file that compose this version is recreated without the deleted row, making the original file obsolete. 
 
-Retention affects time travel and concurrent readers or writers. Choose a period longer than the longest-running transaction and the longest stream lag; removing files too early can break queries or streams. Check your platform's retention defaults and safety checks before changing them.
+But being obsolete doesn't make it automatically dissapear , it needs to be programatically vaccumed. So when running the cleaning, spark checks if the file is eligible to be deleted if its older than the retention period. 
+
+
+>This is the ideal scenario! But something strange happens when some operations have a default feature enabled called **`Deletion Vecors`**
+
+## Deletion Vectors
+
+Spark has introduced since the version <state version> this feacture that  gets triggered when running certain operations under the MERGE operation. UPSERT and DELETE clauses affect the table but  when ocurr instead of creating a new parquet file containing the change , spark marks the deleted rows in a bitmap (which is another file with a different extention ".dv") so when reconstructing the current state of the table it refers quickly to this bitmap to filter out the rows. This operation doesn't alter the original file, this generally to avoid recreating files when the amount of rows to be dropped is few. 
+
+But this comes with a catch , because if the original file is not obsolete after the deletion , then it never becomes a candidate for vaccuming. 
 
 ### Inspect first
 
-On Databricks, use a dry run to list candidates before deleting them:
+On Databricks, use a DESCRIBE EXTENDED on a table
 
 ```sql
-VACUUM events DRY RUN;
+DESCRIBE EXTENDED catalog.schema.mytable;
 ```
 
-Then, when the retention policy is appropriate:
+Then, you'll see in the property column if it has this feature enabled.
+
+[PASTE IMAGE from databricks]
+
+
+## How to deal with them
+
+If we want to be strict with this, on our vaccum process we'll need to purge the deletion vectors and materialize the changes.   We do that using this command:
 
 ```sql
-VACUUM events;
+REORG catalog.schema.table PURGE 
 ```
 
-`VACUUM` is not a substitute for backups, and the ability to time travel depends on retaining both the necessary data files and transaction-log history. Behavior and options differ by runtime and table configuration; consult the [Databricks VACUUM documentation](https://docs.databricks.com/aws/en/delta/vacuum) and [Delta Lake utility documentation](https://docs.delta.io/latest/delta-utility.html#remove-files-no-longer-referenced-by-a-delta-table) before using it in production.
+What this does is to force spark is to take the deltion vectors and apply them on the parquet files, hence the parquet file is recreated and the original now becomes obsolete and the clock starts ticking.
+
+> So I do a REORG + PURGE and then the vaccum cleans it right?
+
+We'll actually no, the PURGE makes spark reflect the changes but its at that very moment where the file becomes a candidate to be eligible for deletion so it needs to wait still the `DurationRetention` until it could be dropped.
+
+## Quick Fix
+
+I see two quick options:
+
+### A. Turn off the deletion vectors feature
+This can be done configuring the spark at the cluster, notebook level. Also you can set this as a property for the table itself.  
+
+### B. Set the WindowDuration to half the desired threshold
+
+If I need the obsolete files to be deleted after 7 days , we can restrict this to 3 days (which is more or less half) and now if a file is PURGED on day 3 just after the VACCUM it will still be deleted on the next VACCUM run that will occur still after 3 days which is less than the 7 days but safely no more than that.
+
+My recommendation is to try to turn off the deletion vectors and test the runtime , if there is no evident change on the duration then we do  not actually need them and we can safely continue with our 7 day retention period. But if the performance degrades , then adjusting the retention is the safest and quick way to fix the issue.
+
+
+Seguimos!
