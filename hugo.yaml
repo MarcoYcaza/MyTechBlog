@@ -1,0 +1,56 @@
+# GitHub Actions supplies the deployed URL automatically. Set this for manual production builds.
+baseURL: http://localhost:1313/
+languageCode: en-us
+title: Field Notes
+theme: PaperMod
+pagination:
+  pagerSize: 10
+outputs:
+  home: [HTML, RSS, JSON]
+taxonomies:
+  category: categories
+  tag: tags
+params:
+  description: Practical notes on software and data engineering.
+  defaultTheme: auto
+  disableThemeToggle: false
+  mainSections: [posts]
+  ShowReadingTime: true
+  ShowCodeCopyButtons: true
+  ShowToc: true
+  TocOpen: false
+  disableSpecial1stPost: true
+  hideAuthor: true
+  homeInfoParams:
+    Title: Field Notes
+    Content: Practical notes on software, data, and the systems that connect them.
+  fuseOpts:
+    isCaseSensitive: false
+    shouldSort: true
+    threshold: 0.3
+    ignoreLocation: true
+    keys:
+      - name: title
+        weight: 0.4
+      - name: description
+        weight: 0.2
+      - name: tags
+        weight: 0.15
+      - name: categories
+        weight: 0.1
+      - name: content
+        weight: 0.15
+menu:
+  main:
+    - { name: Home, url: /, weight: 1 }
+    - { name: Posts, url: /posts/, weight: 2 }
+    - { name: Categories, url: /categories/, weight: 3 }
+    - { name: Tags, url: /tags/, weight: 4 }
+    - { name: Archive, url: /archives/, weight: 5 }
+    - { name: Search, url: /search/, weight: 6 }
+markup:
+  highlight:
+    noClasses: false
+  tableOfContents:
+    startLevel: 2
+    endLevel: 3
