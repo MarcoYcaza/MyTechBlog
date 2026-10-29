@@ -26,7 +26,7 @@ Since we want to identify the error, it will likely appear in the _default_docke
 As we can see, it now shows the error.
 ![Container log showing the application error](./docker-log.png)
 
-### Terminology
+## Terminology
 
 As a summary, these are one-line descriptions for the types of logs shown.
 
